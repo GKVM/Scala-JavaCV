@@ -1,20 +1,22 @@
-package com.chimpler.javacv
+package javacv
+
+import java.awt.Font
 
 import org.bytedeco.javacpp.helper.opencv_core.AbstractCvScalar
 import org.bytedeco.javacpp.opencv_core._
 import org.bytedeco.javacpp.opencv_objdetect.CascadeClassifier
-import org.bytedeco.javacpp.{opencv_imgproc, opencv_core}
+import org.bytedeco.javacpp.{opencv_core, opencv_imgproc}
 import org.bytedeco.javacv.FrameGrabber.ImageMode
-import org.bytedeco.javacv.{OpenCVFrameGrabber, CanvasFrame}
+import org.bytedeco.javacv.{CanvasFrame, OpenCVFrameGrabber}
+
 import scala.collection.mutable
 
-/**
- * Created by chimpler on 7/13/14.
- */
 object FaceWebcamDetectorApp extends App {
 
   // holder for a single detected face: contains face rectangle and the two eye rectangles inside
   case class Face(id: Int, faceRect: Rect, leftEyeRect: Rect, rightEyeRect: Rect)
+
+  case class Body(id: Int, bodyRect: Rect)
 
   // we need to clone the rect because openCV is recycling rectangles created by the detectMultiScale method
   private def cloneRect(rect: Rect): Rect = {
@@ -32,7 +34,10 @@ object FaceWebcamDetectorApp extends App {
     val rightEyeXml = FaceWebcamDetectorApp.getClass.getClassLoader.getResource("haarcascade_mcs_righteye_alt.xml").getPath
     val rightEyeCascade = new CascadeClassifier(rightEyeXml)
 
-    def detect(greyMat: Mat): Seq[Face] = {
+    val bodyXml = FaceWebcamDetectorApp.getClass.getClassLoader.getResource("haarcascade_upperbody.xml").getPath
+    val bodyCascade = new CascadeClassifier(bodyXml)
+
+    def detectFace(greyMat: Mat): Seq[Face] = {
       val faceRects = new Rect()
       faceCascade.detectMultiScale(greyMat, faceRects)
       for(i <- 0 until faceRects.limit()) yield {
@@ -48,6 +53,16 @@ object FaceWebcamDetectorApp extends App {
         val rightEyeRect = new Rect()
         rightEyeCascade.detectMultiScale(rightFaceMat, rightEyeRect)
         Face(i, cloneRect(faceRect), cloneRect(leftEyeRect), cloneRect(rightEyeRect))
+      }
+    }
+
+    def detectBody(greMat:Mat): Seq[Body] = {
+      val bodyRects = new Rect()
+      bodyCascade.detectMultiScale(greyMat, bodyRects)
+      for(i <- 0 until bodyCascade.limit()) yield {
+        val bodyRect = bodyRects.position(i)
+
+        Body(i, cloneRect(bodyRect))
       }
     }
   }
@@ -75,6 +90,7 @@ object FaceWebcamDetectorApp extends App {
   val mat = new Mat(640, 480, CV_8UC3)
   val greyMat = new Mat(640, 480, CV_8U)
   var faces: Seq[Face] = Nil
+  var body: Seq[Body] = Nil
   while (true) {
     val img = grabber.grab()
     cvFlip(img, img, 1)
@@ -84,7 +100,8 @@ object FaceWebcamDetectorApp extends App {
       mat.copyFrom(img.getBufferedImage)
       opencv_imgproc.cvtColor(mat, greyMat, opencv_imgproc.CV_BGR2GRAY, 1)
       opencv_imgproc.equalizeHist(greyMat, greyMat)
-      faces = faceDetector.detect(greyMat)
+      faces = faceDetector.detectFace(greyMat)
+      body = faceDetector.detectBody(greyMat)
       lastRecognitionTime = System.currentTimeMillis()
     }
 
@@ -114,6 +131,19 @@ object FaceWebcamDetectorApp extends App {
       // draw the face number
       val cvPoint = opencv_core.cvPoint(f.faceRect.x, f.faceRect.y - 20)
       cvPutText(img, s"Face ${f.id}", cvPoint, cvFont, AbstractCvScalar.RED)
+    }
+
+    for(f <- body) {
+      // draw the face rectangle
+      cvRectangle(img,
+        opencv_core.cvPoint(f.bodyRect.x, f.bodyRect.y),
+        opencv_core.cvPoint(f.bodyRect.x + f.bodyRect.width, f.bodyRect.y + f.bodyRect.height),
+        AbstractCvScalar.RED,
+        1, CV_AA, 0)
+
+      // draw the body number
+      val cvPoint = opencv_core.cvPoint(f.bodyRect.x, f.bodyRect.y - 20)
+      cvPutText(img, s"Body ${f.id}", cvPoint, cvFont, AbstractCvScalar.RED)
     }
     canvas.showImage(img)
   }

@@ -1,7 +1,5 @@
 name := "javacv-webcam"
 
-organization := "com.chimpler"
-
 val javacvVersion = "0.9"
 
 val javacppVersion = "0.9"
